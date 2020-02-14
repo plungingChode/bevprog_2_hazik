@@ -30,8 +30,15 @@ struct Hopihe
         this->x += x;
         this->y += y;
 
-        if (this->x > SCREEN_X) this->x -= SCREEN_X;
-        if (this->y > SCREEN_Y) this->y -= SCREEN_Y;
+        if (this->x > SCREEN_X)
+        {
+            this->x = SCREEN_X - this->x;
+        }
+
+        if (this->y > SCREEN_Y)
+        {
+            this->y = SCREEN_Y - this->y;
+        }
     }
 
     void render()
