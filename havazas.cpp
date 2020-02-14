@@ -25,7 +25,7 @@ struct Hopihe
         this->y = 0;
     }
 
-    void move(unsigned int x, unsigned int y)
+    void move(int x, int y)
     {
         this->x += x;
         this->y += y;
