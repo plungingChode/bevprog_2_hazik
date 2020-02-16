@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <map>
+#include <fstream>
 
 using namespace genv;
 
@@ -13,6 +14,11 @@ const int SCALE = 15;
 
 const int MAX_X = AREA_WIDTH * SCALE - 1;
 const int MAX_Y = AREA_HEIGHT * SCALE - 1;
+
+const char* HIGH_SCORE_FILE = ".snekhs";
+
+int score = 0;
+int high_score = 0;
 
 struct Point
 {
@@ -45,7 +51,6 @@ public:
     {
         direction.x = 0;
         direction.y = -1;
-        alive = true;
 
         for (int i = 0; i < 5; i++)
         {
@@ -163,16 +168,6 @@ public:
         return p == body[0];
     }
 
-    void kill()
-    {
-        alive = false;
-    }
-
-    bool is_alive()
-    {
-        return alive;
-    }
-
     void add_segment()
     {
         Point& tail = body[body.size() - 1];
@@ -235,6 +230,8 @@ public:
 struct Food
 {
 private:
+    const Walls& w;
+    const Snek& s;
     Point pos;
 
     bool overlaps(Point p, std::vector<Point> hitbox)
@@ -250,19 +247,19 @@ private:
     {
         Point p;
 
-        p.x = std::rand() % (AREA_HEIGHT - 4) + 4;
-        p.y = std::rand() % (AREA_WIDTH - 4) + 4;
+        p.x = 4 + (rand() % (AREA_WIDTH - 4 - 4 + 1));
+        p.y = 4 + (rand() % (AREA_HEIGHT - 4 - 4 + 1));
 
         return p;
     }
 
 public:
-    Food(const Walls& w, const Snek& s)
+    Food(const Walls& w, const Snek& s) : w(w), s(s)
     {
-        respawn(w, s);
+        respawn();
     }
 
-    void respawn(const Walls& w, const Snek& s)
+    void respawn()
     {
         Point p = rand_point();
         while(overlaps(p, s.hitbox()) || 
@@ -293,6 +290,61 @@ void clear_screen()
          << box_to(MAX_X, MAX_Y);
 }
 
+std::string score_to_str(int score)
+{
+    std::string s = std::to_string(score);
+    s.insert(s.begin(), 4 - s.length(), '0');
+    s = "SCORE: " + s;
+    return s;
+}
+
+void render_score(int score)
+{
+    std::string s = score_to_str(score);
+     
+    gout << color(255, 255, 255)
+         << move_to(MAX_X - gout.twidth(s) - 10, gout.cascent() + 5)
+         << text(s);
+}
+
+void render_score_changed(int score)
+{
+    std::string s = score_to_str(score);
+
+     
+    gout << color(0, 0, 0)
+         << move_to(MAX_X - gout.twidth(s) - 10, 0)
+         << box_to(MAX_X, gout.cascent() + 5);
+
+    gout << color(255, 255, 255)
+         << move_to(MAX_X - gout.twidth(s) - 10, gout.cascent() + 5)
+         << text(s);    
+}
+
+void load_high_score()
+{
+    std::ifstream f(HIGH_SCORE_FILE);
+    if (f.good())
+    {
+        f >> high_score;
+        if (high_score > 9999)
+        {
+            high_score = 0;
+        }
+    }
+    f.close();
+}
+
+void save_high_score()
+{
+    std::ofstream f(HIGH_SCORE_FILE);
+    if (f.good())
+    {
+        f << score;
+    }
+    f.close();
+}
+
 int game_loop()
 {
     const int TICK_TIME = 120;
@@ -301,13 +353,14 @@ int game_loop()
 
     clear_screen();
 
-    Snek s(2, 10);
+    Snek s(AREA_WIDTH / 2, AREA_HEIGHT / 2);
     Walls w;
     Food f(w, s);
 
     s.render();
     w.render();
     f.render();
+    render_score(score);
     gout << refresh;
 
     gin.timer(TICK_TIME);
@@ -383,8 +436,19 @@ int game_loop()
             if (s.collides(f.hitbox()))
             {
                 need_add_segment = true;
-                f.respawn(w, s);
+                f.respawn();
                 f.render();
+                score++;
+                render_score_changed(score);
+                
+                if (score >= 9999)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                render_score(score);
             }
 
             s.move();
@@ -434,11 +498,22 @@ int game_over_loop()
     clear_screen();
 
     int line_height = gout.cascent() + gout.cdescent();
-    int start_y = MAX_Y / 2;
+    int start_y = MAX_Y / 2 - 50;
+
+    if (score > high_score)
+    {
+        high_score = score;
+        save_high_score();
+    }
     
+    std::string str_score = score_to_str(score);
+    std::string str_hscore = "HIGH " + score_to_str(high_score);
+
     gout << color(255, 255, 255);
     center_text("GAME OVER", start_y);
-    center_text("Play again? [Y / N]", start_y + line_height + 5);
+    center_text(str_score,  start_y + line_height + 10);
+    center_text(str_hscore, start_y + line_height + 30);
+    center_text("Play again? [Y / N]", start_y + line_height + 55);
     gout << refresh;
 
     event ev;
@@ -466,6 +541,7 @@ int game_over_loop()
     }
 }
 
+// clear box from option
 void render_option(std::string option, int y)
 {
     int twidth = gout.twidth(option);
@@ -478,6 +554,7 @@ void render_option(std::string option, int y)
     center_text(option, y);
 }
 
+// draw box around option
 void render_selected_option(std::string option, int y)
 {
     int twidth = gout.twidth(option);
@@ -578,27 +655,28 @@ int menu_loop()
 
 int main()
 {
+    load_high_score();
     gout.open(AREA_WIDTH * SCALE, AREA_HEIGHT * SCALE);
 
     int state = menu_loop();
     int prev_state = PLAYING;
     while(true)
     {
-        std::cout << state << '\n';
+        // std::cout << state << '\n';
         switch (state)
         {
             case GAME_OVER:
-                std::cout << "game over begin\n";
+                // std::cout << "game over begin\n";
                 state = game_over_loop();
                 break;
 
             case PLAYING:
-                std::cout << "play again begin\n";
+                // std::cout << "play again begin\n";
                 state = game_loop();
                 break;
 
             case MENU:
-                std::cout << "menu begin\n";
+                // std::cout << "menu begin\n";
                 state = menu_loop();
                 break;
 
