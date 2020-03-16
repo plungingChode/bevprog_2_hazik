@@ -9,48 +9,127 @@
 using namespace genv;
 using namespace std;
 
-float g = 9.81F;
+const int SCREEN_X = 400;
+const int SCREEN_Y = 700;
+
+float g = 9.81f;
+
+template<typename T>
+int clean_vector(std::vector<T*>& v, size_t lbound = -1)
+{
+    size_t ubound = v.size();
+    if (lbound == -1)
+    {
+        lbound = 0;
+    }
+    for (size_t i = lbound; i < v.size(); i++)
+    {
+        if (v[i] == nullptr)
+        {
+            for (size_t j = ubound - 1; j > i; j--)
+            {
+                if (v[j] != nullptr)
+                {
+                    ubound = j;
+                    v[i] = v[j];
+                    v[j] = nullptr;
+                    break;
+                }
+            }
+        }
+        if (i >= ubound) break;
+    }
+
+    size_t remove = 0;
+    for (size_t b = v.size() - 1; b >= 0; b--)
+    {
+        if (v[b] != nullptr) break;
+        remove++;
+    }
+    v.resize(v.size() - remove);
+    return remove;
+}
 
 struct Labda
 {
 private:
     float v = 0;
     bool esik_e = true;
-    float rugalmassag = 0.5;
+    float rugalmassag = 0.5f;
     color c = color(255, 255, 255);
 
     int x, y, r;
     canvas k;
 
-    bool modosul = true;
+    bool simulating = false;
 
 public:
-    // Labda(int x, int y, int r, float rugalmassag, float g)
+    bool show_stats = true;
+
     Labda(int x, int y, int r, float rugalmassag)
         : x(x), y(y), r(r), k(2*r, 2*r), rugalmassag(0)
     {
         mod_rugalmassag(rugalmassag);
-        // mod_grav(g);
     }
 
     void rajz()
     {
         gout << stamp(k, x - r, y - r);
 
-        if (modosul)
+        if (y+r < 0)
         {
-            std::stringstream ss;
-            ss << std::fixed << std::setprecision(2) << rugalmassag;
             gout << color(255, 255, 255);
-            gout << move_to(x + r + 10, y) << text("rug: " + ss.str());
+            for (int i = 0; i < 7; i++)
+            {
+                gout << move_to(x - i/1.5, i) << dot;
+                gout << move_to(x + i/1.5, i) << dot;
+            }
+            gout << move_to(x - 7, 20) << text(std::to_string(-y));
+        }
+
+        int text_x = x+r+10;
+        if (text_x + 80 > SCREEN_X) text_x = x-r-90;
+        if (show_stats)
+        {
+            gout << color(255, 255, 255);
+
+            std::stringstream ss;
+            ss << v;
+            gout << move_to(text_x, y + 15) << text(" v0 = " + ss.str());
+
+            ss.str(std::string());
+            ss << std::fixed << std::setprecision(2) << rugalmassag;
+            gout << move_to(text_x, y - 5) << text("rug = " + ss.str());
+        }
+
+        if (!simulating)
+        {
+            gout << color(255, 255, 255);
+            if (v > 0)
+            {
+                gout << move_to(x, y + r) << line(0, v*5);
+                for (int i = 0; i < 7; i++)
+                {
+                    gout << move_to(x - i/1.5, y + r + 5*v - i) << dot;
+                    gout << move_to(x + i/1.5, y + r + 5*v - i) << dot;
+                }
+            }
+            else if (v < 0)
+            {
+                gout << move_to(x, y - r) << line(0, v*5);
+                for (int i = 0; i < 7; i++)
+                {
+                    gout << move_to(x - i/1.5, y - r + 5*v + i) << dot;
+                    gout << move_to(x + i/1.5, y - r + 5*v + i) << dot;
+                }
+            }
         }
     }
 
     void mod_rugalmassag(float rug)
     {
         rugalmassag += rug;
-        if (rugalmassag > 1) rugalmassag = 1;
-        if (rugalmassag < 0) rugalmassag = 0;
+        rugalmassag = std::max(std::min(rugalmassag, 1.0f), 0.0f);
         c = color(255, 255 - 255*rugalmassag, 255 - 255*rugalmassag);
         for (int x = -r; x < r; x++)
         {
@@ -64,22 +143,11 @@ public:
         }
     }
 
-    // void mod_grav(float gr)
-    // {
-    //     g += gr;
-    //     if (g < 0) g=0.01;
-    //     c = color(255 - 255*g, 255, 255 - 255*g);
-    //     for (int x = -r; x < r; x++)
-    //     {
-    //         for (int y = -r; y < r; y++)
-    //         {
-    //             if (x*x + y*y <= r*r)
-    //             {
-    //                 k << c << move_to(x+r, y+r) << dot;
-    //             }
-    //         }
-    //     }
-    // }
+    void mod_v0(float v0)
+    {
+        v += v0;
+        v = std::max(std::min(v, 25.0f), -25.0f);
+    }
 
     void mozgat(int x, int y)
     {
@@ -89,12 +157,14 @@ public:
 
     void szimulacio()
     {
-        modosul = false;
+        k.transparent(true);
+        show_stats = false;
+        simulating = true;
 
         v += 0.01 * g;
         y += v;
 
-        if (y+r >= 380 && esik_e)
+        if (y+r >= SCREEN_Y - 20 && esik_e)
         {
             esik_e = false;
             v = -rugalmassag * v + rugalmassag;
@@ -106,9 +176,21 @@ public:
         }
     }
 
+    bool off_screen()
+    {
+        return y + r < 0 || y - r > SCREEN_Y; 
+    }
+
+    bool is_mouse_over(int m_x, int m_y)
+    {
+        return x-r <= m_x && x+r >= m_x &&
+               y-r <= m_y && y+r >= m_y;
+    }
+
     void essen_le()
     {
-        modosul = false;
+        show_stats = false;
+        simulating = true;
         
         v += 0.01 * g;
         y += v;
@@ -118,15 +200,14 @@ public:
 enum Status
 {
     kezdkep = 0,
-    szimu = 1,
+    szimu = 1
 };
 
 int main()
 {
-    gout.open(400,400);
+    gout.open(SCREEN_X, SCREEN_Y);
 
     vector<Labda*> labdak;
-    // Labda* legujabb = new Labda(0, 0, 10, 0, 0);
     Labda* legujabb = new Labda(0, 0, 10, 0.5);
     Labda* utolso = nullptr;
 
@@ -138,17 +219,24 @@ int main()
     bool fut = false;
 
     bool flush = false;
-    int flushing = 100;
+    int flushing = -1;
 
+    int key_buf = 0;
+    int key_limiter = 0;
     while(gin >> ev && ev.keycode!=key_escape)
     {
         if (stat == kezdkep)
         {
-            gout << color(255,255,255) << move_to(125,50) << text("inditas - BACKSPACE") << move_to(80,100)
-                 << text("labda rogzitese - LEFT CLICK") << move_to(130,150) << text("uj labda - SPACE")
-                 << move_to(30,200) << text("rugalmassagi tenyezo valt. - UP, DOWN ARROW") << move_to(35,250)
-                 << text("gravitacios ero valt. - RIGHT, LEFT ARROW") << move_to(160,300) << text("reset - R")
-                 << move_to(100,350) << text("szimulacio start - ENTER") << refresh;
+            gout << color(255,255,255);
+            gout << move_to(30,50) << text("inditas - BACKSPACE") 
+                 << move_to(30,75) << text("labda rogzitese - LEFT CLICK") 
+                 << move_to(30,100) << text("uj labda - SPACE")
+                 << move_to(30,125) << text("rugalmassagi tenyezo valt. - UP, DOWN ARROW") 
+                 << move_to(30,150) << text("gravitacios ero valt. - RIGHT, LEFT ARROW") 
+                 << move_to(30,175) << text("kezdeti sebesseg valt. - PG UP/PG DOWN") 
+                 << move_to(30,200) << text("reset - R")
+                 << move_to(30,225) << text("szimulacio start - ENTER") 
+                 << refresh;
 
             if (ev.type==ev_key && ev.keycode==key_backspace)
             {
@@ -174,56 +262,92 @@ int main()
 
             if (ev.type == ev_key)
             {
-                if (ev.keycode == key_up && utolso)
+                switch (std::abs(ev.keycode))
                 {
-                    utolso->mod_rugalmassag(+0.05);
+                case key_up:
+                case key_down:
+                case key_right:
+                case key_left:
+                case key_pgup:
+                case key_pgdn:
+                    key_buf += ev.keycode;
+                    break;
+
+                default:
+                    break;
                 }
-                if (ev.keycode == key_down && utolso)
-                {
-                    utolso->mod_rugalmassag(-0.05);
-                }
-                // if (ev.keycode == key_right && utolso)
-                if (ev.keycode == key_right)
-                {
-                    // utolso->mod_grav(+0.05);
-                    g += 0.05;
-                }
-                // if (ev.keycode == key_left  && utolso)
-                if (ev.keycode == key_left)
-                {
-                    g -= 0.05;
-                    // utolso->mod_grav(-0.05);
-                }
+
                 if (ev.keycode == 114)
                 {
                     fut = false;
                     flush = true;
-                    flushing = 100;
                 }
-                if (ev.keycode == key_space)
+                if (ev.keycode == key_space && utolso)
                 {
-                    utolso = nullptr;
-                    // legujabb = new Labda(0, 0, 10, 0, 0);
                     legujabb = new Labda(0, 0, 10, 0.5);
+
+                    utolso->show_stats = false;
+                    utolso = nullptr;
                 }
                 if (ev.keycode == key_enter)
                 {
-                    legujabb = nullptr;
                     fut = true;
-                }
+                    legujabb = nullptr;
+                }                
             }
 
             if (ev.type == ev_timer)
             {
-                gout << color(0, 0, 0) << move_to(0, 0) << box(400, 400);
+                key_limiter++;
+                if (key_limiter % 11 == 0)
+                {
+                    if (utolso)     
+                    {
+                        switch (key_buf)
+                        {
+                        case key_up:   utolso->mod_rugalmassag(+0.05); break;
+                        case key_down: utolso->mod_rugalmassag(-0.05); break;
+                        case key_pgup: utolso->mod_v0(-1); break;
+                        case key_pgdn: utolso->mod_v0(+1); break;
+                        default: break;
+                        }
+                    }
+
+                    if (legujabb)
+                    {
+                        switch (key_buf)
+                        {
+                        case key_up:   legujabb->mod_rugalmassag(+0.05); break;
+                        case key_down: legujabb->mod_rugalmassag(-0.05); break;
+                        case key_pgup: legujabb->mod_v0(-1); break;
+                        case key_pgdn: legujabb->mod_v0(+1); break;
+                        default: break;
+                        }
+                    }
+
+                    if (key_buf == key_left)  g += 0.5;
+                    if (key_buf == key_right) g -= 0.5;
+                }
+
+                gout << color(0, 0, 0) << move_to(0, 0) << box(SCREEN_X, SCREEN_Y);
                 if (legujabb != nullptr)
                 {
                     legujabb->mozgat(m_x, m_y);
                     legujabb->rajz();
                 }
 
-                for (Labda*& l : labdak)
+                // for (Labda*& l : labdak)
+                for (auto it = labdak.rbegin(); it != labdak.rend(); it++)
                 {
+                    Labda*& l = *it;
+                    if (l != utolso)
+                    {
+                        l->show_stats = false;
+                    }
+                    if (!fut && l->is_mouse_over(m_x, m_y))
+                    {
+                        l->show_stats = true;
+                    }
                     if (fut)
                     {
                         l->szimulacio();
@@ -238,19 +362,45 @@ int main()
 
                 if (!flush)
                 {
-                    gout << color(255, 0, 0) << move_to(0, 380) << line(400, 0);
+                    gout << color(255, 150, 0) << move_to(0, SCREEN_Y - 20) << line(SCREEN_X, 0);
+                    gout << color(255, 150, 0) << move_to(0, SCREEN_Y - 19) << box(SCREEN_X, 19);
                 }
-                else if (flushing)
+                else if (flushing == -1)
+                {
+                    int lbound = -1;
+                    for (int i = 0; i < labdak.size(); i++)
+                    {
+                        if (labdak[i]->off_screen())
+                        {
+                            if (lbound == -1) lbound = i;
+
+                            delete labdak[i];
+                            labdak[i] = nullptr;
+                        }
+                    }
+                    if (lbound > -1)
+                    {
+                        clean_vector(labdak, lbound);
+                    }
+
+                    if (labdak.size() == 0)
+                    {
+                        flushing = 100;
+                    }
+                }
+
+                // std::cout << flushing << '\n';
+                if (flushing > 0)
                 {
                     flushing--;
                 }
-                else
+                else if (flushing == 0)
                 {
-                    labdak.clear();
+                    flushing = -1;
                     flush = false;
-                    // legujabb = new Labda(0, 0, 10, 0, 0);
                     legujabb = new Labda(0, 0, 10, 0.5);
                 }
+                
             }
 
             std::stringstream ss;
